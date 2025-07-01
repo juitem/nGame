@@ -37,6 +37,7 @@ decel_speed0 = 5.0
 shuffle_on = False
 
 common_memo = "1,2"
+shared_text = "2,3"
 
 anim_task = None
 
@@ -70,6 +71,7 @@ def get_state():
         'min_speed': min_speed,
         'shuffle_on': shuffle_on,
         'common_memo': common_memo,
+        "shared_text" : shared_text,
     }
 
 @app.route('/')
@@ -82,6 +84,13 @@ def handle_update_common_memo(data):
     txt = data.get('common_memo', '')
     common_memo = txt
     socketio.emit('sync_state', get_state(), room=None)
+
+@socketio.on('update_text')
+def handle_update_text(data):
+    global shared_text
+    shared_text = data.get('shared_text', '')
+    socketio.emit('sync_state', get_state(), room=None)
+
 
 
 @socketio.on('update_names')
@@ -216,7 +225,7 @@ def animate_wheel():
 @socketio.on('reset_all')
 def handle_reset_all():
     global names, winner, spinning, spin_count, slowdown_mode, angle, speed, slowdown_start, last_update_time, cumulative_winners
-    global decel_angle0, decel_time0, decel_speed0, base_speed, shuffle_on, common_memo
+    global decel_angle0, decel_time0, decel_speed0, base_speed, shuffle_on, common_memo, shared_text
     names = list(DEFAULT_NAMES)
     winner = ''
     spinning = False
@@ -233,6 +242,7 @@ def handle_reset_all():
     decel_time0 = 0.0
     decel_speed0 = 5.0
     common_memo = "1,3"
+    shared_text = "defaulttext,text"
     socketio.emit('sync_state', get_state(), room=None)
 
 @socketio.on('reset_winners')
@@ -245,6 +255,7 @@ def handle_reset_winners():
 @socketio.on('connect')
 def handle_connect():
     emit('sync_state', get_state())
+    emit('text_update', {'shared_text':shared_text})
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
