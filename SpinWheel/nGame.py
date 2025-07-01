@@ -36,8 +36,7 @@ decel_speed0 = 5.0
 
 shuffle_on = False
 
-common_memo = "1,2"
-shared_text = "2,3"
+shared_text = "Shared Text"
 
 anim_task = None
 
@@ -70,7 +69,6 @@ def get_state():
         'decel_speed0': decel_speed0,
         'min_speed': min_speed,
         'shuffle_on': shuffle_on,
-        'common_memo': common_memo,
         "shared_text" : shared_text,
     }
 
@@ -78,20 +76,11 @@ def get_state():
 def index():
     return render_template('index.html')
 
-@socketio.on('update_common_memo')
-def handle_update_common_memo(data):
-    global common_memo
-    txt = data.get('common_memo', '')
-    common_memo = txt
-    socketio.emit('sync_state', get_state(), room=None)
-
 @socketio.on('update_text')
 def handle_update_text(data):
     global shared_text
     shared_text = data.get('shared_text', '')
     socketio.emit('sync_state', get_state(), room=None)
-
-
 
 @socketio.on('update_names')
 def handle_update_names(data):
@@ -225,7 +214,7 @@ def animate_wheel():
 @socketio.on('reset_all')
 def handle_reset_all():
     global names, winner, spinning, spin_count, slowdown_mode, angle, speed, slowdown_start, last_update_time, cumulative_winners
-    global decel_angle0, decel_time0, decel_speed0, base_speed, shuffle_on, common_memo, shared_text
+    global decel_angle0, decel_time0, decel_speed0, base_speed, shuffle_on, shared_text
     names = list(DEFAULT_NAMES)
     winner = ''
     spinning = False
@@ -241,8 +230,7 @@ def handle_reset_all():
     decel_angle0 = 0.0
     decel_time0 = 0.0
     decel_speed0 = 5.0
-    common_memo = "1,3"
-    shared_text = "defaulttext,text"
+    shared_text = "shared Text"
     socketio.emit('sync_state', get_state(), room=None)
 
 @socketio.on('reset_winners')

@@ -58,11 +58,11 @@
 <body>
         <h1>Spinning Wheel</h1>
         <h2>Try your luck!</h2>
-        <div style="margin:10px 0;">
+        <!-- <div style="margin:10px 0;">
             <label for="commonMemo" style="font-weight:bold;">Local Memo</label>
             <textarea id="commonMemo" rows="1" readwrite style="width:800px;resize:yes;">juitem,Kay</textarea>
-        </div>
-        <label for="commonMemo" style="font-weight:bold;">Shared Memo</label>
+        </div> -->
+        <label for="sharedText" style="font-weight:bold;">Shared Memo</label>
         <textarea id="sharedText" style="width:800px;" placeholder="input here"></textarea>
     
     <div class="container">
@@ -152,23 +152,6 @@
         }
         window.addEventListener('resize', resizeFireworksCanvas);
         resizeFireworksCanvas();
-
-        document.addEventListener('DOMContentLoaded',
-        function() {
-            const commonMemoTextarea = document.getElementById('commomMemo');
-            if (commonMemoTextarea) {
-                commonMemoTextarea.addEventListener('keydown',
-                    function(e) {
-                        if (e.key === 'Enter' && !e.shiftkey ) {
-                            e.preventDefault();
-                            socket.emit('update_common_memo', { common_memo: this.value });
-                        }
-                    }
-                );
-            } else {
-                console.error('Element with id commonMemo not found');
-            }
-        });
 
         function launchFirework(x, y) {
             const colors = ['#ff5252','#ffd700','#00e676','#00b0ff','#d500f9','#ff6d00','#ff4081','#76ff03','#fff','#ffd6e0'];
@@ -343,10 +326,6 @@
             document.getElementById('resetAllBtn').disabled = spinning;
             document.getElementById('resetWinnersBtn').disabled = spinning;
             document.getElementById('winner').textContent = winner ? `🎉 당첨자: ${winner}` : '';
-
-            if (data.common_memo !== undefined) {
-                document.getElementById('commonMemo').value = data.common_memo;
-            }
 
             if (data.shared_text !== undefined) {
                document.getElementById('sharedText').value = data.shared_text;
