@@ -56,10 +56,17 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Spinning Sheel</h1>
+        <h1>Spinning Wheel</h1>
         <h2>Try your luck!</h2>
-        
+        <!-- <div style="margin:10px 0;">
+            <label for="commonMemo" style="font-weight:bold;">Local Memo</label>
+            <textarea id="commonMemo" rows="1" readwrite style="width:800px;resize:yes;">juitem,Kay</textarea>
+        </div> -->
+        <label for="sharedText" style="font-weight:bold;">Shared Memo</label>
+        <textarea id="sharedText" style="width:800px;" placeholder="input here"></textarea>
+    
+    <div class="container">
+
         <div class="input-group">
             <input type="text" id="namesInput" value="1번,2번,3번,4번,5번,다시돌리기" placeholder="이름1,이름2,이름3 ..." value="1,2,3,4,5,6,7,8,9,10" />
             <button id="setNamesBtn" class="btn">Register</button>
@@ -120,6 +127,24 @@
 
         const wheelCanvas = document.getElementById('wheelCanvas');
         const ctx = wheelCanvas.getContext('2d');
+
+        const textarea = document.getElementById('sharedText');
+        let isLocalChange = false;
+        textarea.addEventListener('input',
+            function() {
+                isLocalChange = true;
+                socket.emit('update_text', {shared_text:textarea.value});
+                socket.on('text_update',
+                    function(data) {   
+                        // if updated by others
+                        if (!isLocalChange || textarea.value !== data.shared_text) {
+                            textarea.value = data.shared_text;
+                        }
+                    }
+                )
+                isLocalChange = false;
+            }
+        );
 
         function resizeFireworksCanvas() {
             fireworksCanvas.width = window.innerWidth;
@@ -229,7 +254,7 @@
                     }, 50);
                     setTimeout(() => {
                         span.remove();
-                    }, 2200);
+                    }, 2400);
                 }, Math.random() * 1200);
             }
         }
@@ -301,6 +326,10 @@
             document.getElementById('resetAllBtn').disabled = spinning;
             document.getElementById('resetWinnersBtn').disabled = spinning;
             document.getElementById('winner').textContent = winner ? `🎉 당첨자: ${winner}` : '';
+
+            if (data.shared_text !== undefined) {
+               document.getElementById('sharedText').value = data.shared_text;
+            }
 
             updateCumulativeWinners(cumulative_winners);
             render();
