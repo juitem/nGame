@@ -1,11 +1,12 @@
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
-import eventlet
 import time
 import random
 import math
 
-eventlet.monkey_patch()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
@@ -35,7 +36,10 @@ decel_speed0 = 5.0
 
 shuffle_on = False
 
+shared_text = "Shared Text"
+
 anim_task = None
+
 
 def get_winner_index(angle, names):
     N = len(names)
@@ -65,11 +69,18 @@ def get_state():
         'decel_speed0': decel_speed0,
         'min_speed': min_speed,
         'shuffle_on': shuffle_on,
+        "shared_text" : shared_text,
     }
 
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@socketio.on('update_text')
+def handle_update_text(data):
+    global shared_text
+    shared_text = data.get('shared_text', '')
+    socketio.emit('sync_state', get_state(), room=None)
 
 @socketio.on('update_names')
 def handle_update_names(data):
@@ -203,7 +214,7 @@ def animate_wheel():
 @socketio.on('reset_all')
 def handle_reset_all():
     global names, winner, spinning, spin_count, slowdown_mode, angle, speed, slowdown_start, last_update_time, cumulative_winners
-    global decel_angle0, decel_time0, decel_speed0, base_speed, shuffle_on
+    global decel_angle0, decel_time0, decel_speed0, base_speed, shuffle_on, shared_text
     names = list(DEFAULT_NAMES)
     winner = ''
     spinning = False
@@ -219,6 +230,7 @@ def handle_reset_all():
     decel_angle0 = 0.0
     decel_time0 = 0.0
     decel_speed0 = 5.0
+    shared_text = "shared Text"
     socketio.emit('sync_state', get_state(), room=None)
 
 @socketio.on('reset_winners')
@@ -231,6 +243,7 @@ def handle_reset_winners():
 @socketio.on('connect')
 def handle_connect():
     emit('sync_state', get_state())
+    emit('text_update', {'shared_text':shared_text})
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
