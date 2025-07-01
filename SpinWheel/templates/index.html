@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Spinning Wheel</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; }
+        #wheelCanvas { border: 6px solid #bbb; border-radius: 50%; }
+        #winner { font-size: 2em; margin-top: 20px; color: #2196F3; }
+        #spinCount { margin: 10px; font-weight: bold; }
+        .btn { margin: 0 5px; }
+    </style>
+</head>
+<body>
+    <h2>실시간 추첨 원판</h2>
+    <div>
+        <input type="text" id="namesInput" placeholder="이름1,이름2,이름3 ..." style="width:300px;" value="1,2,3,4,5,6,7,8,9,10">
+        <button id="setNamesBtn" class="btn">이름 등록</button>
+    </div>
+    <div style="margin:20px;">
+        <button id="spinBtn" class="btn">시작</button>
+        <button id="stopBtn" class="btn">바로 멈춤</button>
+        <button id="slowdownBtn" class="btn">5초 후 느려지며 멈춤</button>
+        <span id="spinCount">누적 회전 수: 0</span>
+    </div>
+    <canvas id="wheelCanvas" width="350" height="350"></canvas>
+    <div id="winner"></div>
+
+    <script>
+        const socket = io();
+
+        let names = [];
+        let spinning = false;
+        let winner = '';
+        let spin_count = 0;
+        let angle = 0;
+        let animationId = null;
+        let slowdown_mode = false;
+        let slowSpeed = 0.25;
+
+        const wheelCanvas = document.getElementById('wheelCanvas');
+        const ctx = wheelCanvas.getContext('2d');
+
+        function drawWheel(namesArr, highlightIndex = null) {
+            const N = namesArr.length;
+            const centerX = wheelCanvas.width / 2;
+            const centerY = wheelCanvas.height / 2;
+            const radius = 150;
+            ctx.clearRect(0, 0, wheelCanvas.width, wheelCanvas.height);
+
+            for (let i = 0; i < N; i++) {
+                const startAngle = angle + 2 * Math.PI * i / N;
+                const endAngle = angle + 2 * Math.PI * (i + 1) / N;
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+                ctx.closePath();
+                ctx.fillStyle = i % 2 === 0 ? "#f8b400" : "#6dd5ed";
+                if (highlightIndex !== null && i === highlightIndex) ctx.fillStyle = "#ff5252";
+                ctx.fill();
+                ctx.stroke();
+                // 이름
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate((startAngle + endAngle) / 2);
+                ctx.textAlign = "right";
+                ctx.fillStyle = "#222";
+                ctx.font = "bold 18px sans-serif";
+                ctx.fillText(namesArr[i], radius - 10, 8);
+                ctx.restore();
+            }
+            // 바늘
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY - radius - 10);
+            ctx.lineTo(centerX, centerY - radius + 10);
+            ctx.strokeStyle = "#e91e63";
+            ctx.lineWidth = 6;
+            ctx.stroke();
+        }
+
+        function animateSpin(targetIndex = null) {
+            let speed = 0.25; // radian per frame
+            let decel = 0.995;
+            function frame() {
+                angle += speed;
+                drawWheel(names, null);
+                if (spinning && !slowdown_mode) {
+                    animationId = requestAnimationFrame(frame);
+                } else if (slowdown_mode && speed > 0.01) {
+                    speed *= decel;
+                    animationId = requestAnimationFrame(frame);
+                } else if (slowdown_mode) {
+                    // slowdown 끝, 서버에서 멈춤 신호가 오면 당첨자 표시
+                    animationId = requestAnimationFrame(frame);
+                }
+            }
+            frame();
+        }
+
+        socket.on('sync_state', function(data) {
+            names = data.names;
+            spinning = data.spinning;
+            winner = data.winner;
+            spin_count = data.spin_count;
+            slowdown_mode = data.slowdown_mode;
+            document.getElementById('spinCount').textContent = `누적 회전 수: ${spin_count}`;
+            document.getElementById('spinBtn').disabled = spinning || names.length === 0;
+            document.getElementById('setNamesBtn').disabled = spinning;
+            document.getElementById('namesInput').disabled = spinning;
+            document.getElementById('stopBtn').disabled = !spinning;
+            document.getElementById('slowdownBtn').disabled = !spinning || slowdown_mode;
+            document.getElementById('winner').textContent = winner ? `🎉 당첨자: ${winner}` : '';
+            if (names.length > 0) {
+                if (spinning) {
+                    document.getElementById('winner').textContent = '';
+                    if (animationId) cancelAnimationFrame(animationId);
+                    animateSpin();
+                } else {
+                    if (winner) {
+                        // 당첨자 인덱스 찾기
+                        let idx = names.indexOf(winner);
+                        setTimeout(() => {
+                            drawWheel(names, idx);
+                        }, 1200);
+                    } else {
+                        angle = 0;
+                        drawWheel(names, null);
+                        if (animationId) cancelAnimationFrame(animationId);
+                    }
+                }
+            } else {
+                ctx.clearRect(0, 0, wheelCanvas.width, wheelCanvas.height);
+                if (animationId) cancelAnimationFrame(animationId);
+            }
+        });
+
+        document.getElementById('setNamesBtn').onclick = function() {
+            const val = document.getElementById('namesInput').value;
+            socket.emit('update_names', { names: val });
+        };
+        document.getElementById('spinBtn').onclick = function() {
+            socket.emit('start_spin');
+        };
+        document.getElementById('stopBtn').onclick = function() {
+            socket.emit('stop_immediate');
+        };
+        document.getElementById('slowdownBtn').onclick = function() {
+            socket.emit('stop_slowdown');
+        };
+
+        // 최초 접속시 초기화
+        drawWheel([], null);
+    </script>
+</body>
+</html>
