@@ -56,13 +56,14 @@
     </style>
 </head>
 <body>
-    <div class="container">
         <h1>Spinning Wheel</h1>
         <h2>Try your luck!</h2>
         <div style="margin:10px 0;">
             <label for="commonMemo" style="font-weight:bold;">Admin Memo</label>
-            <textarea id="commonMemo" rows="2" readwrite style="width:800px;resize:yes;">juitem,Kay</textarea>
+            <textarea id="commonMemo" rows="1" readwrite style="width:800px;resize:yes;">juitem,Kay</textarea>
         </div>
+
+    <div class="container">
 
         <div class="input-group">
             <input type="text" id="namesInput" value="1번,2번,3번,4번,5번,다시돌리기" placeholder="이름1,이름2,이름3 ..." value="1,2,3,4,5,6,7,8,9,10" />
@@ -133,16 +134,22 @@
         window.addEventListener('resize', resizeFireworksCanvas);
         resizeFireworksCanvas();
 
-       document.getElementById('commomMemo').addEventListener('keydown',
-            function(e) {
-                if (e.key === 'Enter' && !e.shiftkey ) {
-                    e.preventDefault();
-                    socket.emit('update_common_memo', {commonMemo: this.value });
-                }
+        document.addEventListener('DOMContentLoaded',
+        function() {
+            const commonMemoTextarea = document.getElementById('commomMemo');
+            if (commonMemoTextarea) {
+                commonMemoTextarea.addEventListener('keydown',
+                    function(e) {
+                        if (e.key === 'Enter' && !e.shiftkey ) {
+                            e.preventDefault();
+                            socket.emit('update_common_memo', { common_memo: this.value });
+                        }
+                    }
+                );
+            } else {
+                console.error('Element with id commonMemo not found');
             }
-        );
- 
-
+        });
 
         function launchFirework(x, y) {
             const colors = ['#ff5252','#ffd700','#00e676','#00b0ff','#d500f9','#ff6d00','#ff4081','#76ff03','#fff','#ffd6e0'];
