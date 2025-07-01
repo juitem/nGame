@@ -1,11 +1,12 @@
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
-import eventlet
 import time
 import random
 import math
 
-eventlet.monkey_patch()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
@@ -35,7 +36,10 @@ decel_speed0 = 5.0
 
 shuffle_on = False
 
+common_memo = "1,2"
+
 anim_task = None
+
 
 def get_winner_index(angle, names):
     N = len(names)
@@ -65,11 +69,20 @@ def get_state():
         'decel_speed0': decel_speed0,
         'min_speed': min_speed,
         'shuffle_on': shuffle_on,
+        'common_memo': common_memo,
     }
 
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@socketio.on('update_common_memo')
+def handle_update_common_memo(data):
+    global common_memo
+    txt = data.get('common_memo', '')
+    common_memo = txt
+    socketio.emit('sync_state', get_state(), room=None)
+
 
 @socketio.on('update_names')
 def handle_update_names(data):
@@ -203,7 +216,7 @@ def animate_wheel():
 @socketio.on('reset_all')
 def handle_reset_all():
     global names, winner, spinning, spin_count, slowdown_mode, angle, speed, slowdown_start, last_update_time, cumulative_winners
-    global decel_angle0, decel_time0, decel_speed0, base_speed, shuffle_on
+    global decel_angle0, decel_time0, decel_speed0, base_speed, shuffle_on, common_memo
     names = list(DEFAULT_NAMES)
     winner = ''
     spinning = False
@@ -219,6 +232,7 @@ def handle_reset_all():
     decel_angle0 = 0.0
     decel_time0 = 0.0
     decel_speed0 = 5.0
+    common_memo = "1,3"
     socketio.emit('sync_state', get_state(), room=None)
 
 @socketio.on('reset_winners')
