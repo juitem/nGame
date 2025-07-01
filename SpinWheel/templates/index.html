@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>Spinning Wheel</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; margin: 0; padding: 0; background-color: #f5f5f5; }
+        #wheelCanvas { border: 8px solid #ddd; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        #winner { font-size: 2em; margin-top: 25px; color: #2196F3; min-height: 2em; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); }
+        #spinCount { margin: 15px; font-weight: bold; font-size: 1.1em; color: #555; }
+        .btn { 
+            margin: 0 8px; padding: 10px 20px; 
+            background: #4CAF50; color: white; 
+            border: none; border-radius: 5px; 
+            cursor: pointer; font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .btn:hover { background: #45a049; transform: translateY(-2px); }
+        .btn:disabled { background: #cccccc; cursor: not-allowed; transform: none; }
+        #cumulativeWinners {
+            position: fixed; bottom: 0; left: 0; width: 100%; background: #fff;
+            max-height: 180px; overflow-y: auto; font-size: 15px; padding: 15px 0; 
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 100;
+            border-top: 1px solid #eee;
+        }
+        #winnerList { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; }
+        #winnerList li { 
+            display: inline-block; margin: 8px 15px; padding: 8px 15px; 
+            background: #e3f2fd; border-radius: 20px; font-weight: 500;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        #fireworks-canvas { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 1000;}
+        .emoji { 
+            font-size: 3.5em; pointer-events: none; position: fixed; 
+            animation: pop 2.5s cubic-bezier(.2,1.8,.5,1) forwards;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        @keyframes pop {
+            0% { transform: scale(0.1) translateY(0); opacity: 0.2; }
+            20% { opacity: 1; }
+            60% { transform: scale(1.3) translateY(-80px); }
+            100% { transform: scale(1) translateY(-250px); opacity: 0; }
+        }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .input-group { margin: 25px 0; display: flex; justify-content: center; gap: 10px; }
+        #namesInput { 
+            padding: 12px 15px; width: 350px; border: 2px solid #ddd; 
+            border-radius: 8px; font-size: 16px; transition: border 0.3s;
+        }
+        #namesInput:focus { border-color: #4CAF50; outline: none; }
+        .btn-group { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin: 25px 0; }
+        h1 { color: #2c3e50; margin-bottom: 10px; font-size: 2.5em; text-shadow: 1px 1px 3px rgba(0,0,0,0.1); }
+        h2 { color: #34495e; margin-top: 0; font-size: 1.8em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Spinning Sheel</h1>
+        <h2>Try your luck!</h2>
+        
+        <div class="input-group">
+            <input type="text" id="namesInput" value="1번,2번,3번,4번,5번,다시돌리기" placeholder="이름1,이름2,이름3 ..." value="1,2,3,4,5,6,7,8,9,10" />
+            <button id="setNamesBtn" class="btn">Register</button>
+            <button id="shuffleToggleBtn" class="btn">Shuffle ON</button>
+            <input type="number" id="baseSpeedInput" class="btn" style="width:100px" min="0.1" max="100" step="0.1" value="5.0" />
+            <button id="setSpeedBtn" class="btn">회전속도 적용</button>
+        </div>
+        
+        <div class="btn-group">
+            <button id="spinBtn" class="btn">SPIN</button>
+            <button id="stopBtn" class="btn">STOP Now!!</button>
+            <button id="slowdownBtn" class="btn">Smooth STOP</button>
+            <button id="resetAllBtn" class="btn" style="background:#b71c1c;">전체초기화</button>
+            <button id="resetWinnersBtn" class="btn" style="background:#1976d2;">당첨이력만 초기화</button>
+        </div>
+        
+        <div id="spinCount">누적 회전 수: 0</div>
+        <canvas id="wheelCanvas" width="400" height="400"></canvas>
+        <div id="winner"></div>
+    </div>
+
+    <div id="cumulativeWinners">
+        <h3>누적 당첨자</h3>
+        <ul id="winnerList"></ul>
+    </div>
+    <canvas id="fireworks-canvas"></canvas>
+
+    <script>
+        const socket = io();
+
+        let names = ["1번", "2번", "3번", "4번", "5번", "다시돌리기"];
+        let spinning = false;
+        let winner = '';
+        let spin_count = 0;
+        let slowdown_mode = false;
+        let base_angle = 0;
+        let base_speed = 37.0;
+        let slowdown_start = null;
+        let slowdown_duration = 7.0;
+        let last_update_time = null;
+        let cumulative_winners = [];
+
+        let decel_angle0 = 0;
+        let decel_time0 = 0;
+        let decel_speed0 = 5.0;
+        let min_speed = 0.005;
+
+        let shuffleOn = false;
+        let shuffleTimer = null;
+
+
+        // fireworks & emoji
+        let fireworksActive = false;
+        let fireworksTimer = null;
+        let fireworksParticles = [];
+        const fireworksCanvas = document.getElementById('fireworks-canvas');
+        const fwCtx = fireworksCanvas.getContext('2d');
+
+        const wheelCanvas = document.getElementById('wheelCanvas');
+        const ctx = wheelCanvas.getContext('2d');
+
+        function resizeFireworksCanvas() {
+            fireworksCanvas.width = window.innerWidth;
+            fireworksCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeFireworksCanvas);
+        resizeFireworksCanvas();
+
+        function launchFirework(x, y) {
+            const colors = ['#ff5252','#ffd700','#00e676','#00b0ff','#d500f9','#ff6d00','#ff4081','#76ff03','#fff','#ffd6e0'];
+            for (let i = 0; i < 120; i++) {
+                let angle = (2 * Math.PI * i) / 120;
+                let speed = Math.random() * 7 + 3;
+                fireworksParticles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    alpha: 1,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    radius: Math.random() * 5 + 2
+                });
+            }
+        }
+
+        function animateFireworks() {
+            fwCtx.clearRect(0, 0, fireworksCanvas.width, fireworksCanvas.height);
+            fireworksParticles.forEach(p => {
+                fwCtx.save();
+                fwCtx.globalAlpha = p.alpha;
+                fwCtx.beginPath();
+                fwCtx.arc(p.x, p.y, p.radius, 0, 2 * Math.PI);
+                fwCtx.fillStyle = p.color;
+                fwCtx.shadowColor = p.color;
+                fwCtx.shadowBlur = 20;
+                fwCtx.fill();
+                fwCtx.restore();
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.02;
+                p.alpha -= 0.006;
+            });
+            fireworksParticles = fireworksParticles.filter(p => p.alpha > 0);
+            if (fireworksParticles.length > 0) {
+                requestAnimationFrame(animateFireworks);
+            } else {
+                fireworksActive = false;
+            }
+        }
+
+        function showFireworks() {
+            if (fireworksActive) return;
+            fireworksActive = true;
+            fireworksParticles = [];
+            for (let i = 0; i < 10; i++) {
+                setTimeout(() => {
+                    let x = Math.random() * (window.innerWidth * 0.6) + window.innerWidth * 0.2;
+                    let y = Math.random() * (window.innerHeight * 0.5) + window.innerHeight * 0.1;
+                    launchFirework(x, y);
+                }, i * 300);
+            }
+            animateFireworks();
+            clearTimeout(fireworksTimer);
+            fireworksTimer = setTimeout(() => {
+                fireworksParticles = [];
+                fireworksActive = false;
+                fwCtx.clearRect(0, 0, fireworksCanvas.width, fireworksCanvas.height);
+            }, 5000);
+            for (let i = 0; i < 20; i++) {
+                setTimeout(() => {
+                    popEmoji();
+                }, Math.random() * 3000);
+            }
+        }
+
+        function popEmoji() {
+            const emojis = ["🎉", "🎊", "✨", "🥳", "🏆", "⭐", "💎", "🍾", "💰", "🎈", "🦄", "👑", "🌟", "🎂", "🍀", "💐"];
+            const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+            const el = document.createElement('div');
+            el.className = "emoji";
+            el.textContent = emoji;
+            el.style.left = (Math.random() * 80 + 10) + "vw";
+            el.style.top = (Math.random() * 30 + 30) + "vh";
+            document.body.appendChild(el);
+            setTimeout(() => { el.remove(); }, 2500);
+        }
+
+        function getWinnerIndex(angle, names) {
+            const N = names.length;
+            if (N === 0) return null;
+            const arc = 2 * Math.PI / N;
+            const pointer_angle = -1*angle % (2 * Math.PI);
+            let idx = Math.floor((pointer_angle ) / arc) % N;
+            if (idx < 0) idx += N;
+            return idx;
+        }
+
+        document.getElementById('shuffleToggleBtn').onclick = function () {
+            shuffleOn = !shuffleOn;
+            socket.emit('set_shuffle_on', { shuffle_on: shuffleOn });
+        };
+
+        function startShuffleTimer() {
+            stopShuffleTimer();
+            shuffleTimer = setInterval(() => {
+                if (!spinning && shuffleOn) {
+                    socket.emit('shuffle_names');
+                }
+            }, 500);
+        }
+        function stopShuffleTimer() {
+            if (shuffleTimer) {
+                clearInterval(shuffleTimer);
+                shuffleTimer = null;
+            }
+        }
+
+        document.getElementById('spinBtn').onclick = function () {
+            shuffleOn = false;
+            socket.emit('set_shuffle_on', { shuffle_on: false });
+            stopShuffleTimer();
+            socket.emit('start_spin');
+        };
+
+        socket.on('sync_state', function (data) {
+            names = data.names;
+            spinning = data.spinning;
+            winner = data.winner;
+            spin_count = data.spin_count;
+            slowdown_mode = data.slowdown_mode;
+            base_angle = data.angle || 0;
+            base_speed = data.base_speed || 37.0;
+            slowdown_start = data.slowdown_start;
+            slowdown_duration = data.slowdown_duration || 7.0;
+            last_update_time = data.last_update_time || (Date.now() / 1000);
+            cumulative_winners = data.cumulative_winners || [];
+            decel_angle0 = data.decel_angle0 || 0;
+            decel_time0 = data.decel_time0 || 0;
+            decel_speed0 = data.decel_speed0 || 5.0;
+            min_speed = data.min_speed || 0.005;
+            shuffleOn = data.shuffle_on || false;
+
+            document.getElementById('baseSpeedInput').value = base_speed;
+            document.getElementById('spinCount').textContent = `누적 회전 수: ${spin_count}`;
+            document.getElementById('spinBtn').disabled = spinning || names.length === 0;
+            document.getElementById('setNamesBtn').disabled = spinning;
+            document.getElementById('namesInput').disabled = spinning;
+            document.getElementById('shuffleToggleBtn').disabled = spinning;
+            document.getElementById('shuffleToggleBtn').textContent = shuffleOn ? "Shuffle ON" : "Shuffle OFF";
+            document.getElementById('stopBtn').disabled = !spinning;
+            document.getElementById('slowdownBtn').disabled = !spinning || slowdown_mode;
+            document.getElementById('resetAllBtn').disabled = spinning;
+            document.getElementById('resetWinnersBtn').disabled = spinning;
+            document.getElementById('winner').textContent = winner ? `🎉 당첨자: ${winner}` : '';
+
+            updateCumulativeWinners(cumulative_winners);
+            render();
+
+            if (shuffleOn && !spinning) {
+                startShuffleTimer();
+            } else {
+                stopShuffleTimer();
+            }
+
+            if (winner && winner !== prevWinner) {
+                showFireworks();
+                prevWinner = winner;
+            }
+            if (!winner) {
+                prevWinner = '';
+            }
+        });
+
+        document.getElementById('setNamesBtn').onclick = function () {
+            const val = document.getElementById('namesInput').value;
+            socket.emit('update_names', { names: val });
+        };
+        document.getElementById('setSpeedBtn').onclick = function () {
+            const val = parseFloat(document.getElementById('baseSpeedInput').value);
+            socket.emit('set_base_speed', { base_speed: val });
+        };
+        document.getElementById('stopBtn').onclick = function () {
+            socket.emit('stop_immediate');
+        };
+        document.getElementById('slowdownBtn').onclick = function () {
+            socket.emit('stop_slowdown');
+        };
+        document.getElementById('resetAllBtn').onclick = function () {
+            if (confirm("정말 전체를 초기화하시겠습니까?")) {
+                socket.emit('reset_all');
+            }
+        };
+        document.getElementById('resetWinnersBtn').onclick = function () {
+            if (confirm("정말 당첨이력만 초기화하시겠습니까?")) {
+                socket.emit('reset_winners');
+            }
+        };
+
+
+
+        function drawWheel(namesArr, highlightIndex = null) {
+            const N = namesArr.length;
+            if (N === 0) {
+                ctx.clearRect(0, 0, wheelCanvas.width, wheelCanvas.height);
+                return;
+            }
+            const centerX = wheelCanvas.width / 2;
+            const centerY = wheelCanvas.height / 2;
+            const radius = 170;
+            ctx.clearRect(0, 0, wheelCanvas.width, wheelCanvas.height);
+
+            const arc = 2 * Math.PI / N;
+            const offsetAngle = base_angle; // 3시 방향이 바늘
+
+            for (let i = 0; i < N; i++) {
+                const startAngle = offsetAngle + arc * i;
+                const endAngle = startAngle + arc;
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+                ctx.closePath();
+                ctx.fillStyle = i % 2 === 0 ? "#ff9e80" : "#81d4fa";
+                if (highlightIndex !== null && i === highlightIndex) {
+                    ctx.fillStyle = "#ff5252";
+                    ctx.shadowColor = "#ff5252";
+                    ctx.shadowBlur = 15;
+                }
+                ctx.fill();
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(startAngle + arc / 2);
+                ctx.textAlign = "right";
+                ctx.fillStyle = "#222";
+                ctx.font = "bold 20px 'Noto Sans KR', sans-serif";
+                ctx.fillText(namesArr[i], radius - 15, 10);
+                ctx.restore();
+            }
+            // 바늘 (3시 방향)
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(centerX + radius + 22, centerY);
+            ctx.lineTo(centerX + radius - 10, centerY);
+            ctx.strokeStyle = "#e91e63";
+            ctx.lineWidth = 10;
+            ctx.lineCap = "round";
+            ctx.shadowColor = "#e91e63";
+            ctx.shadowBlur = 18;
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
+            ctx.fillStyle = "#e91e63";
+            ctx.fill();
+        }
+
+        function render() {
+            let highlight = null;
+            if (!spinning && winner && names.length > 0) {
+                highlight = names.indexOf(winner);
+            }
+            drawWheel(names, highlight);
+        }
+
+        function updateCumulativeWinners(cumulativeWinners) {
+            const list = document.getElementById('winnerList');
+            list.innerHTML = '';
+            cumulativeWinners.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = `회차 ${item.round}: ${item.winner}`;
+                list.appendChild(li);
+            });
+        }
+
+        let prevWinner = '';
+        drawWheel(names, null);
+
+        function animationLoop() {
+            render();
+            requestAnimationFrame(animationLoop);
+        }
+        animationLoop();
+    </script>
+</body>
+</html>
+
+
