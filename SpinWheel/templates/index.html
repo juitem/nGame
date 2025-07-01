@@ -207,6 +207,33 @@
             setTimeout(() => { el.remove(); }, 2500);
         }
 
+        function showWinnerNameFirework(name) {
+            for (let i = 0; i < 30; i++) {
+                setTimeout(() => {
+                    const span = document.createElement('span');
+                    span.textContent = name;
+                    span.style.position = 'fixed';
+                    span.style.left = (Math.random() * 85 + 5) + 'vw';
+                    span.style.top = (Math.random() * 70 + 10) + 'vh';
+                    span.style.fontSize = (Math.random() * 3 + 2) + 'em';
+                    span.style.fontWeight = 'bold';
+                    span.style.color = `hsl(${Math.floor(Math.random() * 360)},100%,50%)`;
+                    span.style.opacity = '1';
+                    span.style.pointerEvents = 'none';
+                    span.style.zIndex = 2000;
+                    span.style.transition = `all 2.2s cubic-bezier(.2,1.8,.5,1)`;
+                    document.body.appendChild(span);
+                    setTimeout(() => {
+                        span.style.transform = `scale(${1 + Math.random()}) translateY(-${Math.random() * 200 + 100}px)`;
+                        span.style.opacity = '0';
+                    }, 50);
+                    setTimeout(() => {
+                        span.remove();
+                    }, 2200);
+                }, Math.random() * 1200);
+            }
+        }
+
         function getWinnerIndex(angle, names) {
             const N = names.length;
             if (N === 0) return null;
@@ -286,6 +313,7 @@
 
             if (winner && winner !== prevWinner) {
                 showFireworks();
+                showWinnerNameFirework(winner);
                 prevWinner = winner;
             }
             if (!winner) {
@@ -317,7 +345,6 @@
                 socket.emit('reset_winners');
             }
         };
-
 
 
         function drawWheel(namesArr, highlightIndex = null) {
